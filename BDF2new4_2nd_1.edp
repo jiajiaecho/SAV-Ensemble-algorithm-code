@@ -1,0 +1,509 @@
+// Dong's idea
+// Seems OK if dt<=0.001
+string fnse = "Carburator";
+verbosity = 2;
+include "Mesh.idp" //
+
+// FE SPACE
+fespace Vh(Th,P2);
+Vh[int] u1(3), u2(3); 
+Vh[int] un1(3), un2(3); 
+Vh[int] ubar1(3), ubar2(3);
+Vh[int] uh1(3), uh2(3), unh1(3), unh2(3);
+Vh[int] uoh1(3), uoh2(3), unoh1(3), unoh2(3);
+
+Vh  v1, v2, h = hTriangle, unn1, unn2, uAdv1, uAdv2, w1, w2, z1, z2, x1, x2, y1, y2;
+Vh  vn1, vn2, xn1, xn2, zn1, zn2; 
+fespace Qh(Th,P1);
+Qh[int] p(3); 
+Qh[int] ph(3), poh(3); 
+Qh q;
+cout << " Mesh Diameter = " << h[].max << endl;
+
+// time steps, etc.
+real nu1 = 1.0/1000.0;
+
+//real nu1 = 0.001;
+real nu2 = 1.0/1050.0;
+real nu3 = 1.0/1100.0; //nu1*(1-0.1);
+real nuinf1 = max(nu1, nu2);
+real nuinf=max(nuinf1, nu3);
+real Tf = 4.0;
+real dt = 0.001;
+int nbiter = Tf/dt;
+real t = 0.0;
+real pi = 3.141592653589793;
+func g=y*(1.0-y)*4.0; // inflow BC
+real tgv = 1e+30;
+real delta = 0.01;
+real U0 = 1.0;
+real C0 =0.01;
+real errorDivUL2 = 0.0;
+real gamma = 1.0;
+real alpha = 1.0;
+real eps = (1e-2);
+
+
+
+func g2 =(1.0+eps)*y*(1-y)*4.0;
+
+func g3 =(1.0-eps)*y*(1-y)*4.0;
+   
+func g1 = y*(1-y)*4.0;
+   
+
+func real fvh1 (real t) {
+   return eps*cos(pi*x*y+t);
+   }
+func real fvh2 (real t) {
+   return eps*sin(pi*(x+y)+t);
+   }
+   
+func real fwh1 (real t) {
+   return eps*sin(pi*(x+y)+t);
+   }
+func real fwh2 (real t) {
+   return eps*cos(pi*x*y+t);
+   }
+func real fuh1 (real t) {
+   return 0.0;
+   }
+func real fuh2 (real t) {
+   return 0.0;
+   }
+
+include "Macros.idp"
+
+// #######################################################################
+// #               THE ASSEMBLY OF THE MIXED MATRIX FOR NSE              #
+// #                	THE CONSTANT PART                                  #
+// #######################################################################
+
+//-----------------------------//
+//     Q11 pressure matrix     //
+//-----------------------------//
+varf pform(p,q) = int2d(Th)((1e-10)*p*q);
+matrix Q11=pform(Qh,Qh);
+
+//----------------------------------//
+// 	        B11 matrix         //
+//--------------------------------//
+varf bvar1(qh,v1) = int2d(Th)((-1.0)*qh*dx(v1));
+matrix B11a = bvar1(Qh,Vh);
+varf bvar2(qh,v2) = int2d(Th)((-1.0)*qh*dy(v2));
+matrix B11b = bvar2(Qh,Vh);
+matrix B11 = [
+              [ B11a],
+              [ B11b]
+              ];
+
+//----------------------------------------//
+// 	    	A matrix          	  //
+//----------------------------------------//
+
+varf axx(u1,v1)=int2d(Th)((nuinf+alpha*h*1.5)*(dx(u1)*dx(v1)+dy(u1)*dy(v1))+1.5*u1*v1/dt)
+	 +on(1,u1=0.0)+on(21,22,23,24,41,42,43,44,51,53, u1 = 0.0);
+varf ayy(u2,v2)=int2d(Th)((nuinf+alpha*h*1.5)*(dx(u2)*dx(v2)+dy(u2)*dy(v2))+1.5*u2*v2/dt)
+	 +on(1,u2=0.0)+on(21,22,23,24,41,42,43,44,51,53, u2 = 0.0);
+
+matrix Axx=axx(Vh,Vh,solver=sparsesolver,tgv=tgv);
+matrix Ayy=ayy(Vh,Vh,solver=sparsesolver,tgv=tgv);
+
+matrix ANSE = [
+							[ Axx, 0],
+							[ 0, Ayy]
+							];
+matrix M = [
+					[ ANSE , B11],
+					[ B11' , Q11] //'
+					];
+set(M,solver=sparsesolver);
+
+//----------------------------------------//
+// 	    	A matrix          	  //
+//----------------------------------------//
+
+varf axx1(u1,v1)=int2d(Th)((nuinf+alpha*h*1.5)*(dx(u1)*dx(v1)+dy(u1)*dy(v1))+1.5*u1*v1/dt)
+	 +on(1,u1=g1)+on(21,22,23,24,41,42,43,44,51,53, u1 = 0.0);
+
+matrix Axx1=axx1(Vh,Vh,solver=sparsesolver,tgv=tgv);
+
+
+matrix ANSE1 = [
+							[ Axx1, 0],
+							[ 0, Ayy]
+							];
+matrix M1 = [
+					[ ANSE1 , B11],
+					[ B11' , Q11] //'
+					];
+set(M1,solver=sparsesolver);
+
+
+varf axx2(u1,v1)=int2d(Th)((nuinf+alpha*h*1.5)*(dx(u1)*dx(v1)+dy(u1)*dy(v1))+1.5*u1*v1/dt)
+	 +on(1,u1=g2)+on(21,22,23,24,41,42,43,44,51,53, u1 = 0.0);
+
+matrix Axx2=axx2(Vh,Vh,solver=sparsesolver,tgv=tgv);
+
+
+matrix ANSE2 = [
+							[ Axx2, 0],
+							[ 0, Ayy]
+							];
+matrix M2 = [
+					[ ANSE2 , B11],
+					[ B11' , Q11] //'
+					];
+set(M2,solver=sparsesolver);
+
+
+varf axx3(u1,v1)=int2d(Th)((nuinf+alpha*h*1.5)*(dx(u1)*dx(v1)+dy(u1)*dy(v1))+1.5*u1*v1/dt)
+	 +on(1,u1=g3)+on(21,22,23,24,41,42,43,44,51,53, u1 = 0.0);
+
+matrix Axx3=axx3(Vh,Vh,solver=sparsesolver,tgv=tgv);
+
+
+matrix ANSE3 = [
+							[ Axx3, 0],
+							[ 0, Ayy]
+							];
+matrix M3 = [
+					[ ANSE3 , B11],
+					[ B11' , Q11] //'
+					];
+set(M3,solver=sparsesolver);
+
+
+
+
+
+// initial conditions
+u1[0] = 0.0;
+u2[0] = 0.0;
+u1[1] = 0.0;
+u2[1] = 0.0;
+u1[2] = 0.0;
+u2[2] = 0.0;
+un1[0] = 0.0;
+un2[0]= 0.0;
+un1[1] = 0.0;
+un2[1]= 0.0;
+un1[2] = 0.0;
+un2[2]= 0.0;
+real EpHF, PU, GradUNU, UNUU;
+real[int] A(3), B(2);
+real[int] RpHF(3), xi(3);
+
+
+RpHF[0] = 1.5*sqrt((int2d(Th)(u1[0]^2+u2[0]^2))/2.0+C0)
+      -0.5*sqrt((int2d(Th)(un1[0]^2+un2[0]^2))/2.0+C0);
+
+RpHF[1] = 1.5*sqrt((int2d(Th)(u1[1]^2+u2[1]^2))/2.0+C0)
+      -0.5*sqrt((int2d(Th)(un1[1]^2+un2[1]^2))/2.0+C0);
+RpHF[2] = 1.5*sqrt((int2d(Th)(u1[2]^2+u2[2]^2))/2.0+C0)
+      -0.5*sqrt((int2d(Th)(un1[2]^2+un2[2]^2))/2.0+C0);
+// to store the solution of velocity and pressure field filters
+real[int] SolVel(2*Vh.ndof);
+real[int] RHSPressure(Qh.ndof);
+// to store the RHS of systems in velocity field filters
+real[int] RHSVel(2*Vh.ndof);
+real[int] SolNSE(2*Vh.ndof+Qh.ndof);
+real[int] fNSE(2*Vh.ndof+Qh.ndof); //RHS
+
+{
+    ofstream report(fnse + "_REPORTnew"+mshlevel+".txt");
+    report << " ***            BEGIN REPORT, Aziz Takhirov              ***" << endl;
+    report << " ***            Flow in contraction channel              ***" << endl << endl;
+    report << "Numerical scheme: " << endl;
+    report << " *** Dong's gPAV scheme    ***" << endl;
+    report << "TIME STEPPING DATA: " << endl;
+    report << "  Time step size,               dt = " << dt << endl;
+    report << "  Initial time,                 T0 = " << 0.0 << endl;
+    report << "  Final time,                   Tf = " << Tf << endl;
+    report << "PROBLEM PARAMETERS: " << endl;
+    report << "Fluid viscosity,         nu        = " << nu1 << endl;
+    report << "h_min,                 = " << h[].min << endl;
+    report << "h_max,                 = " << h[].max << endl;
+    report << "TOTAL DOF              = " << un1[0][].n + un2[0][].n + p[0][].n << endl;
+}
+
+ofstream ff("Xicarnew"+mshlevel+".txt");
+real energy;
+real cputime = clock();
+
+for (int i=1;i<=nbiter;i++)
+{
+	
+
+	t = i*dt;
+	cout << "Current iteration number = " << i << endl;
+	cout << "Current time = " << t << endl;
+
+  //---------------------------------//
+  //   Right hand side               //
+  //---------------------------------//
+  fNSE = 0.0;
+  unn1 = un1[0]; unn2 = un2[0];
+  un1[0] = u1[0]; un2[0] = u2[0];
+  uAdv1 = 2.0*un1[0] - unn1; uAdv2 = 2.0*un2[0] - unn2;
+  w1 = 2.0*un1[0]-0.5*unn1; w2 = 2.0*un2[0]-0.5*unn2;
+  varf fx11(unused,v1) = int2d(Th)(v1*w1/dt + alpha*h*(dx(v1)*dx(w1)+dy(v1)*dy(w1)) 
+    +(nuinf-nu1)*(dx(v1)*dx(uAdv1)+dy(v1)*dy(uAdv1))  +fuh1(t)*v1)
+	  + on(1,unused=g1)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(0:Vh.ndof-1) = fx11(0,Vh,tgv=tgv);
+
+  varf fy11(unused,v2) = int2d(Th)(v2*w2/dt + alpha*h*(dx(v2)*dx(w2)+dy(v2)*dy(w2)) 
+    +(nuinf-nu1)*(dx(v2)*dx(uAdv2)+dy(v2)*dy(uAdv2)) +fuh2(t)*v2)
+		+ on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(Vh.ndof:2*Vh.ndof-1) = fy11(0,Vh,tgv=tgv);
+  unh1[0]=uh1[0]; unh2[0]=uh2[0]; 
+  SolNSE = M1^-1 * fNSE;
+  [uh1[0][],uh2[0][],ph[0][]] = SolNSE;
+  
+  
+    // ####################################################################### //
+    
+  fNSE = 0.0;
+  varf fx21(unused,v1)=int2d(Th)(-(ugradv(uAdv1,uAdv2,uAdv1)+0.5*div(uAdv1,uAdv2)*uAdv1)*v1)
+	  + int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta0(uAdv1,uAdv2)*uAdv1*v1)
+	  + on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(0:Vh.ndof-1) = fx21(0,Vh,tgv=tgv);
+
+  varf fy21(unused,v2)=int2d(Th)(-(ugradv(uAdv1,uAdv2,uAdv2)+0.5*div(uAdv1,uAdv2)*uAdv2)*v2)
+		+ int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta0(uAdv1,uAdv2)*uAdv2*v2)
+		+ on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(Vh.ndof:2*Vh.ndof-1) = fy21(0,Vh,tgv=tgv);
+  unoh1[0]=uoh1[0]; unoh2[0]=uoh2[0]; 
+  SolNSE = M^-1 * fNSE;
+  [uoh1[0][],uoh2[0][],poh[0][]] = SolNSE;
+  
+    //=========================================================================//
+  v1 = uh1[0]+uoh1[0]; v2 = uh2[0]+uoh2[0]; // = ubar
+  z1 = 1.5*v1-0.5*un1[0]; z2 = 1.5*v2-0.5*un2[0];
+  x1 = 2.0*v1-un1[0]; x2 =2.0*v2-un2[0]; 
+  
+  y1 = v1-2.0*un1[0]+unn1; y2 = v2-2.0*un2[0]+unn2; 
+  //En = (int2d(Th)(contract(v1,v2,v1,v2)) + int2d(Th)(contract(x1,x2,x1,x2)))/4.0;
+  //Dn =  int2d(Th)(contract(y1,y2,y1,y2))
+  
+  vn1 = unh1[0]+unoh1[0]; vn2 = unh2[0]+unoh2[0]; // = ubar
+  zn1 = 1.5*vn1-0.5*unn1; zn2 = 1.5*vn2-0.5*unn2;
+  xn1 = 2.0*vn1-unn1; xn2 =2.0*vn2-unn2; 
+ // Enn = int2d(Th)(contract(vn1,vn2,vn1,vn2)) + int2d(Th)(contract(xn1,xn2,xn1,xn2));
+
+
+  A[0] = nu1*int2d(Th)(contract(v1,v2,v1,v2)) + 
+ alpha*h*((int2d(Th)(contract(v1,v2,v1,v2)) + int2d(Th)(contract(x1,x2,x1,x2))+int2d(Th)(contract(y1,y2,y1,y2))))/4.0+
+    int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta1(uAdv1,uAdv2)*dot(v1,v2,v1,v2));
+  PU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( dot(uh1[0],uh2[0],N.x,N.y)*ph[0]);
+  GradUNU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( (N.x*dx(uh1[0])+N.y*dy(uh1[0]))*uh1[0]
+      + (N.x*dx(uh2[0])+N.y*dy(uh2[0]))*uh2[0] );
+  UNUU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)(0.5*dot(uh1[0],uh2[0],N.x,N.y)*(uh1[0]^2+uh2[0]^2));
+  A[1] = -PU+nu1*GradUNU-UNUU;
+
+  PU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( dot(uh1[0],uh2[0],N.x,N.y)*poh[0]);
+  GradUNU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)((N.x*dx(uoh1[0])+N.y*dy(uoh1[0]))*uh1[0]
+      + (N.x*dx(uoh2[0])+N.y*dy(uoh2[0]))*uh2[0] );
+  A[2] = -PU+nu1*GradUNU;
+
+  B[0] = A[0]+abs(A[1])+abs(A[2])-A[2];
+  B[1] = abs(A[1])+A[1]+abs(A[2])+alpha*h*xi[0]*(int2d(Th)(contract(vn1,vn2,vn1,vn2)) + int2d(Th)(contract(xn1,xn2,xn1,xn2)))/4.0;
+
+  v1 = 1.5*v1-0.5*un1[0]; v2 = 1.5*v2-0.5*un2[0];
+  EpHF = (int2d(Th)(v1^2+v2^2))/2.0+C0;
+
+  xi[0] = (B[1]*dt+RpHF[0]^2)/(EpHF + dt*B[0]);
+  if (xi[0]>1) xi[0] = 1.0;
+
+  RpHF[0] = sqrt(xi[0]*EpHF);
+  
+  
+ 
+ // ####################################################################### //
+ // ####################################################################### //
+ // ####################################################################### //
+ 
+   fNSE = 0.0;
+  unn1 = un1[1]; unn2 = un2[1];
+  un1[1] = u1[1]; un2[1] = u2[1];
+  uAdv1 = 2.0*un1[1] - unn1; uAdv2 = 2.0*un2[1] - unn2;
+  w1 = 2.0*un1[1]-0.5*unn1; w2 = 2.0*un2[1]-0.5*unn2;
+  varf fx12(unused,v1) = int2d(Th)(v1*w1/dt + alpha*h*(dx(v1)*dx(w1)+dy(v1)*dy(w1)) 
+    +(nuinf-nu2)*(dx(v1)*dx(uAdv1)+dy(v1)*dy(uAdv1))  +fvh1(t)*v1)
+	  + on(1,unused=g2)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(0:Vh.ndof-1) = fx12(0,Vh,tgv=tgv);
+
+  varf fy12(unused,v2) = int2d(Th)(v2*w2/dt + alpha*h*(dx(v2)*dx(w2)+dy(v2)*dy(w2)) 
+    +(nuinf-nu2)*(dx(v2)*dx(uAdv2)+dy(v2)*dy(uAdv2)) + fvh2(t)*v2)
+		+ on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(Vh.ndof:2*Vh.ndof-1) = fy12(0,Vh,tgv=tgv);
+  unh1[1]=uh1[1]; unh2[1]=uh2[1];
+  SolNSE = M2^-1 * fNSE;
+  [uh1[1][],uh2[1][],ph[1][]] = SolNSE;
+  
+ // ####################################################################### //
+  fNSE = 0.0;
+  varf fx22(unused,v1)=int2d(Th)(-(ugradv(uAdv1,uAdv2,uAdv1)+0.5*div(uAdv1,uAdv2)*uAdv1)*v1)
+	  + int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta0(uAdv1,uAdv2)*uAdv1*v1)
+	  + on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(0:Vh.ndof-1) = fx22(0,Vh,tgv=tgv);
+
+  varf fy22(unused,v2)=int2d(Th)(-(ugradv(uAdv1,uAdv2,uAdv2)+0.5*div(uAdv1,uAdv2)*uAdv2)*v2)
+		+ int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta0(uAdv1,uAdv2)*uAdv2*v2)
+		+ on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(Vh.ndof:2*Vh.ndof-1) = fy22(0,Vh,tgv=tgv);
+  unoh1[1]=uoh1[1]; unoh2[1]=uoh2[1]; 
+  SolNSE = M^-1 * fNSE;
+  [uoh1[1][],uoh2[1][],poh[1][]] = SolNSE;
+  
+  
+     //=========================================================================//
+  v1 = uh1[1]+uoh1[1]; v2 = uh2[1]+uoh2[1]; // = ubar
+  z1 = 1.5*v1-0.5*un1[1]; z2 = 1.5*v2-0.5*un2[1];
+  x1 = 2.0*v1-un1[1]; x2 =2.0*v2-un2[1]; 
+  y1 = v1-2.0*un1[1]+unn1; y2 = v2-2.0*un2[1]+unn2; 
+
+  
+  vn1 = unh1[1]+unoh1[1]; vn2 = unh2[1]+unoh2[1]; // = ubar
+  zn1 = 1.5*vn1-0.5*unn1; zn2 = 1.5*vn2-0.5*unn2;
+  xn1 = 2.0*vn1-unn1; xn2 =2.0*vn2-unn2; 
+
+  A[0] = nu2*int2d(Th)(contract(v1,v2,v1,v2)) + 
+  alpha*h*((int2d(Th)(contract(v1,v2,v1,v2)) + int2d(Th)(contract(x1,x2,x1,x2))+int2d(Th)(contract(y1,y2,y1,y2))))/4.0
+  +int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta1(uAdv1,uAdv2)*dot(v1,v2,v1,v2));
+  PU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( dot(uh1[1],uh2[1],N.x,N.y)*ph[1]);
+  GradUNU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( (N.x*dx(uh1[1])+N.y*dy(uh1[1]))*uh1[1]
+      + (N.x*dx(uh2[1])+N.y*dy(uh2[1]))*uh2[1] );
+  UNUU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)(0.5*dot(uh1[1],uh2[1],N.x,N.y)*(uh1[1]^2+uh2[1]^2));
+  A[1] = -PU+nu2*GradUNU-UNUU;
+
+  PU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( dot(uh1[1],uh2[1],N.x,N.y)*poh[1]);
+  GradUNU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)((N.x*dx(uoh1[1])+N.y*dy(uoh1[1]))*uh1[1]
+      + (N.x*dx(uoh2[1])+N.y*dy(uoh2[1]))*uh2[1] );
+  A[2] = -PU+nu2*GradUNU;
+
+  B[0] = A[0]+abs(A[1])+abs(A[2])-A[2];
+  B[1] = abs(A[1])+A[1]+abs(A[2])+alpha*h*xi[1]*(int2d(Th)(contract(vn1,vn2,vn1,vn2)) + int2d(Th)(contract(xn1,xn2,xn1,xn2)))/4.0;
+
+  v1 = 1.5*v1-0.5*un1[1]; v2 = 1.5*v2-0.5*un2[1];
+  EpHF = (int2d(Th)(v1^2+v2^2))/2.0+C0;
+
+  xi[1] = (B[1]*dt+RpHF[1]^2)/(EpHF + dt*B[0]);
+  if (xi[1]>1) xi[1] = 1.0;
+
+  RpHF[1] = sqrt(xi[1]*EpHF);
+  
+ 
+ // ####################################################################### //  
+ // ####################################################################### //  
+ // ####################################################################### //  
+  fNSE = 0.0;
+  unn1 = un1[2]; unn2 = un2[2];
+  un1[2] = u1[2]; un2[2] = u2[2];
+  uAdv1 = 2.0*un1[2] - unn1; uAdv2 = 2.0*un2[2] - unn2;
+  w1 = 2.0*un1[2]-0.5*unn1; w2 = 2.0*un2[2]-0.5*unn2;
+  varf fx13(unused,v1) = int2d(Th)(v1*w1/dt + alpha*h*(dx(v1)*dx(w1)+dy(v1)*dy(w1)) 
+    +(nuinf-nu3)*(dx(v1)*dx(uAdv1)+dy(v1)*dy(uAdv1)) +fwh1(t)*v1)
+	  + on(1,unused=g3)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(0:Vh.ndof-1) = fx13(0,Vh,tgv=tgv);
+
+  varf fy13(unused,v2) = int2d(Th)(v2*w2/dt + alpha*h*(dx(v2)*dx(w2)+dy(v2)*dy(w2)) 
+    +(nuinf-nu3)*(dx(v2)*dx(uAdv2)+dy(v2)*dy(uAdv2)) +fwh2(t)*v2)
+		+ on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(Vh.ndof:2*Vh.ndof-1) = fy13(0,Vh,tgv=tgv);
+  unh1[2]=uh1[2]; unh2[2]=uh2[2];
+  SolNSE = M3^-1 * fNSE;
+  [uh1[2][],uh2[2][],ph[2][]] = SolNSE;
+  
+ // ####################################################################### //
+  fNSE = 0.0;
+  varf fx23(unused,v1)=int2d(Th)(-(ugradv(uAdv1,uAdv2,uAdv1)+0.5*div(uAdv1,uAdv2)*uAdv1)*v1)
+	  + int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta0(uAdv1,uAdv2)*uAdv1*v1)
+	  + on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(0:Vh.ndof-1) = fx23(0,Vh,tgv=tgv);
+
+  varf fy23(unused,v2)=int2d(Th)(-(ugradv(uAdv1,uAdv2,uAdv2)+0.5*div(uAdv1,uAdv2)*uAdv2)*v2)
+		+ int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta0(uAdv1,uAdv2)*uAdv2*v2)
+		+ on(1,unused=0)
+ 		+ on(21,22,23,24,41,42,43,44,51,53,unused=0);
+  fNSE(Vh.ndof:2*Vh.ndof-1) = fy23(0,Vh,tgv=tgv);
+  unoh1[2]=uoh1[2]; unoh2[2]=uoh2[2]; 
+  SolNSE = M^-1 * fNSE;
+  [uoh1[2][],uoh2[2][],poh[2][]] = SolNSE;
+  
+  
+     //=========================================================================//
+  v1 = uh1[2]+uoh1[2]; v2 = uh2[2]+uoh2[2]; // = ubar
+  z1 = 1.5*v1-0.5*un1[2]; z2 = 1.5*v2-0.5*un2[2];
+  x1 = 2.0*v1-un1[1]; x2 =2.0*v2-un2[1]; 
+  y1 = v1-2.0*un1[2]+unn1; y2 = v2-2.0*un2[2]+unn2; 
+
+  
+  vn1 = unh1[2]+unoh1[2]; vn2 = unh2[2]+unoh2[2]; // = ubar
+  zn1 = 1.5*vn1-0.5*unn1; zn2 = 1.5*vn2-0.5*unn2;
+  xn1 = 2.0*vn1-unn1; xn2 =2.0*vn2-unn2; 
+
+  A[0] = nu3*int2d(Th)(contract(v1,v2,v1,v2)) + 
+  alpha*h*((int2d(Th)(contract(v1,v2,v1,v2)) + int2d(Th)(contract(x1,x2,x1,x2))+int2d(Th)(contract(y1,y2,y1,y2))))/4.0+
+    int1d(Th,3,52)(0.5*dot(uAdv1,uAdv2,N.x,N.y)*theta1(uAdv1,uAdv2)*dot(v1,v2,v1,v2));
+  PU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( dot(uh1[2],uh2[2],N.x,N.y)*ph[2]);
+  GradUNU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( (N.x*dx(uh1[2])+N.y*dy(uh1[2]))*uh1[2]
+      + (N.x*dx(uh2[2])+N.y*dy(uh2[2]))*uh2[2] );
+  UNUU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)(0.5*dot(uh1[2],uh2[2],N.x,N.y)*(uh1[2]^2+uh2[2]^2));
+  A[1] = -PU+nu3*GradUNU-UNUU;
+
+  PU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)( dot(uh1[2],uh2[2],N.x,N.y)*poh[2]);
+  GradUNU = int1d(Th,1,21,22,23,24,41,42,43,44,51,53)((N.x*dx(uoh1[2])+N.y*dy(uoh1[2]))*uh1[2]
+      + (N.x*dx(uoh2[2])+N.y*dy(uoh2[2]))*uh2[2] );
+  A[2] = -PU+nu3*GradUNU;
+
+  B[0] = A[0]+abs(A[1])+abs(A[2])-A[2];
+  B[1] = abs(A[1])+A[1]+abs(A[2])+alpha*h*xi[2]*(int2d(Th)(contract(vn1,vn2,vn1,vn2)) + int2d(Th)(contract(xn1,xn2,xn1,xn2)))/4.0;
+
+  v1 = 1.5*v1-0.5*un1[2]; v2 = 1.5*v2-0.5*un2[2];
+  EpHF = (int2d(Th)(v1^2+v2^2))/2.0+C0;
+
+  xi[2] = (B[1]*dt+RpHF[2]^2)/(EpHF + dt*B[0]);
+  if (xi[2]>1) xi[2] = 1.0;
+
+  RpHF[2] = sqrt(xi[2]*EpHF);
+// ####################################################################### //
+// ####################################################################### //
+// ####################################################################### //
+
+  ff << t << " " << xi[0] <<" "<<xi[1]<<" "<<xi[2] << endl;
+
+  cout << " xi = " << xi[0] <<" "<<xi[1]<<" "<<xi[2] << endl;
+  u1[0] = uh1[0]+xi[0]*uoh1[0]; u2[0] = uh2[0]+xi[0]*uoh2[0];
+  u1[1] = uh1[1]+xi[1]*uoh1[1]; u2[1] = uh2[1]+xi[1]*uoh2[1];
+  u1[2] = uh1[2]+xi[2]*uoh1[2]; u2[2] = uh2[2]+xi[2]*uoh2[2];
+  p[0] = ph[0]+xi[0]*poh[0];
+  p[1] = ph[1]+xi[1]*poh[1];
+  p[2] = ph[2]+xi[2]*poh[2];
+
+  cout << " div norm = " << sqrt(int2d(Th)( div(u1[0],u2[0])^2)) << endl;
+  plot([u1[0],u2[0]],wait=0,fill=1,value=1);
+
+//  if (i%10 ==0) {
+//    energy = 0.5*int2d(Th)(u1[0]^2+u2[0]^2);
+//    ff << t << "  " << energy << "  " << xi << endl;
+//    }
+
+  if ((abs(t-4.0) < 1e-6) || (abs(t-1.0) < 1e-6) ||(abs(t-2.0) < 1e-6) || (abs(t-3.0) < 1e-6) )
+    {
+  mesh ThVTK = buildmesh(A1(39)+A2a(39)+A2b(41)+A2c(43)+A2d(43)+A3(43)+A4a(43)+A4b(41)+A4s1(41)+A4s2(41)+A4s3(41)+A4c(41)+A4d(39));
+  savevtk("newVel"+"_Th.nt="+Th.nt+"_t="+t+".vtk",ThVTK,[u1[0],u2[0],0.0],dataname ="vel"); //'saves' vtk'file'for'each'iteration
+  savevtk("newP"+"_Th.nt="+Th.nt+"_t="+t+".vtk",ThVTK,p[0],dataname ="pres"); //'saves' vtk'file'for'each'iteration
+  }
+}
